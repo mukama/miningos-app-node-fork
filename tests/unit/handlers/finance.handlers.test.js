@@ -1820,8 +1820,8 @@ test('getRevenueSummary - folds forecast energy sales, pool rebates and net-of-t
           case 'forecastSettings': return [{ miningRevenueTaxFees: { percent: 4, fixed: 2 } }]
           case 'forecastHistory': return [{
             hourlyForecast: [
-              { start: dayTs, energySalesRevenue: 100, energySalesRevenueSelected: 100, energySalesRevenuePerMwh: 10, energySalesTaxesAndFees: 2, miningRevenue: 50, taxesAndFees: 1 },
-              { start: dayTs + hour, energySalesRevenue: 100, energySalesRevenueSelected: 0, energySalesRevenuePerMwh: 10, energySalesTaxesAndFees: 2, miningRevenue: 500, taxesAndFees: 20 }
+              { start: dayTs, isEnergySelected: true, energySalesRevenue: 100, energySalesRevenueSelected: 100, energySalesRevenuePerMwh: 10, energySalesTaxesAndFees: 2, miningRevenue: 50, taxesAndFees: 1 },
+              { start: dayTs + hour, isEnergySelected: false, energySalesRevenue: 100, energySalesRevenueSelected: 100, energySalesRevenuePerMwh: 10, energySalesTaxesAndFees: 2, miningRevenue: 500, taxesAndFees: 20 }
             ]
           }]
           default: return []

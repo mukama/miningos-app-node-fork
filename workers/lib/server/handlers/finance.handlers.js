@@ -244,7 +244,7 @@ function processForecastHistory (results) {
         const mwh = safeDiv(h.energySalesRevenue, h.energySalesRevenuePerMwh) || 0
         const sellNet = h.energySalesRevenue - (h.energySalesTaxesAndFees || 0)
         const mineNet = (h.miningRevenue || 0) - (h.taxesAndFees || 0)
-        if (h.energySalesRevenueSelected > 0) {
+        if (h.isEnergySelected === true) {
           d.energySalesGrossUSD += h.energySalesRevenue
           d.energySalesTaxesAndFeesUSD += h.energySalesTaxesAndFees || 0
           d.soldMWh += mwh
