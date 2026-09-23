@@ -32,7 +32,6 @@ const {
   getPowerModeTimeline,
   processPowerModeTimelineData,
   resolvePowerModeTimelineInterval,
-  localizePowerModeTimelineLog,
   getTemperature,
   processTemperatureData,
   calculateTemperatureSummary,
@@ -616,7 +615,7 @@ test('getConsumption - happy path', async (t) => {
   t.pass()
 })
 
-test('getConsumption - timezone param converts start/end before querying', async (t) => {
+test('getConsumption - timezone param never reinterprets start/end', async (t) => {
   let capturedPayload
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'key1' }] },
@@ -628,20 +627,19 @@ test('getConsumption - timezone param converts start/end before querying', async
     }
   })
 
-  const localStart = Date.UTC(2026, 5, 1, 0, 0, 0)
-  const localEnd = Date.UTC(2026, 5, 2, 0, 0, 0)
+  const start = Date.UTC(2026, 5, 1, 0, 0, 0)
+  const end = Date.UTC(2026, 5, 2, 0, 0, 0)
 
   await getConsumption(mockCtx, {
-    query: { start: localStart, end: localEnd, timezone: 'America/Campo_Grande' }
+    query: { start, end, timezone: 'America/Campo_Grande' }
   })
 
-  // America/Campo_Grande is UTC-4 with no DST, so local midnight is 04:00 UTC.
-  t.is(capturedPayload.start, localStart + 4 * 3600000, 'should shift start to real UTC')
-  t.is(capturedPayload.end, localEnd + 4 * 3600000, 'should shift end to real UTC')
+  t.is(capturedPayload.start, start, 'start is a true UTC instant, same as export')
+  t.is(capturedPayload.end, end, 'end is a true UTC instant, same as export')
   t.pass()
 })
 
-test('getConsumption - timezone conversion propagates to the grouped delegation path', async (t) => {
+test('getConsumption - start/end pass through unconverted on the grouped delegation path too', async (t) => {
   let capturedPayload
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'key1' }] },
@@ -653,15 +651,15 @@ test('getConsumption - timezone conversion propagates to the grouped delegation 
     }
   })
 
-  const localStart = Date.UTC(2026, 5, 1, 0, 0, 0)
-  const localEnd = Date.UTC(2026, 5, 2, 0, 0, 0)
+  const start = Date.UTC(2026, 5, 1, 0, 0, 0)
+  const end = Date.UTC(2026, 5, 2, 0, 0, 0)
 
   await getConsumption(mockCtx, {
-    query: { start: localStart, end: localEnd, timezone: 'America/Campo_Grande', groupBy: 'miner' }
+    query: { start, end, timezone: 'America/Campo_Grande', groupBy: 'miner' }
   })
 
-  t.is(capturedPayload.start, localStart + 4 * 3600000, 'grouped RPC call should see the converted start')
-  t.is(capturedPayload.end, localEnd + 4 * 3600000, 'grouped RPC call should see the converted end')
+  t.is(capturedPayload.start, start, 'grouped RPC call should see the unconverted start')
+  t.is(capturedPayload.end, end, 'grouped RPC call should see the unconverted end')
   t.pass()
 })
 
@@ -1679,7 +1677,7 @@ test('getEfficiency - happy path', async (t) => {
   t.pass()
 })
 
-test('getEfficiency - timezone param converts start/end before querying', async (t) => {
+test('getEfficiency - timezone param never reinterprets start/end', async (t) => {
   let capturedPayload
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'key1' }] },
@@ -1691,15 +1689,15 @@ test('getEfficiency - timezone param converts start/end before querying', async 
     }
   })
 
-  const localStart = Date.UTC(2026, 5, 1, 0, 0, 0)
-  const localEnd = Date.UTC(2026, 5, 2, 0, 0, 0)
+  const start = Date.UTC(2026, 5, 1, 0, 0, 0)
+  const end = Date.UTC(2026, 5, 2, 0, 0, 0)
 
   await getEfficiency(mockCtx, {
-    query: { start: localStart, end: localEnd, timezone: 'America/Campo_Grande' }
+    query: { start, end, timezone: 'America/Campo_Grande' }
   })
 
-  t.is(capturedPayload.start, localStart + 4 * 3600000, 'should shift start to real UTC')
-  t.is(capturedPayload.end, localEnd + 4 * 3600000, 'should shift end to real UTC')
+  t.is(capturedPayload.start, start, 'start is a true UTC instant, same as export')
+  t.is(capturedPayload.end, end, 'end is a true UTC instant, same as export')
   t.pass()
 })
 
@@ -2126,7 +2124,7 @@ test('getMinerStatus - happy path', async (t) => {
   t.pass()
 })
 
-test('getMinerStatus - timezone param converts start/end before querying', async (t) => {
+test('getMinerStatus - timezone param never reinterprets start/end', async (t) => {
   let capturedPayload
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'key1' }] },
@@ -2138,15 +2136,15 @@ test('getMinerStatus - timezone param converts start/end before querying', async
     }
   })
 
-  const localStart = Date.UTC(2026, 5, 1, 0, 0, 0)
-  const localEnd = Date.UTC(2026, 5, 2, 0, 0, 0)
+  const start = Date.UTC(2026, 5, 1, 0, 0, 0)
+  const end = Date.UTC(2026, 5, 2, 0, 0, 0)
 
   await getMinerStatus(mockCtx, {
-    query: { start: localStart, end: localEnd, timezone: 'America/Campo_Grande' }
+    query: { start, end, timezone: 'America/Campo_Grande' }
   })
 
-  t.is(capturedPayload.start, localStart + 4 * 3600000, 'should shift start to real UTC')
-  t.is(capturedPayload.end, localEnd + 4 * 3600000, 'should shift end to real UTC')
+  t.is(capturedPayload.start, start, 'start is a true UTC instant, same as export')
+  t.is(capturedPayload.end, end, 'end is a true UTC instant, same as export')
   t.pass()
 })
 
@@ -2734,7 +2732,7 @@ test('getPowerMode - happy path', async (t) => {
   t.pass()
 })
 
-test('getPowerMode - timezone param converts start/end before querying', async (t) => {
+test('getPowerMode - timezone param never reinterprets start/end', async (t) => {
   let capturedPayload
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'key1' }] },
@@ -2746,15 +2744,15 @@ test('getPowerMode - timezone param converts start/end before querying', async (
     }
   })
 
-  const localStart = Date.UTC(2026, 5, 1, 0, 0, 0)
-  const localEnd = Date.UTC(2026, 5, 2, 0, 0, 0)
+  const start = Date.UTC(2026, 5, 1, 0, 0, 0)
+  const end = Date.UTC(2026, 5, 2, 0, 0, 0)
 
   await getPowerMode(mockCtx, {
-    query: { start: localStart, end: localEnd, timezone: 'America/Campo_Grande' }
+    query: { start, end, timezone: 'America/Campo_Grande' }
   })
 
-  t.is(capturedPayload.start, localStart + 4 * 3600000, 'should shift start to real UTC')
-  t.is(capturedPayload.end, localEnd + 4 * 3600000, 'should shift end to real UTC')
+  t.is(capturedPayload.start, start, 'start is a true UTC instant, same as export')
+  t.is(capturedPayload.end, end, 'end is a true UTC instant, same as export')
   t.pass()
 })
 
@@ -2944,25 +2942,6 @@ test('getPowerModeTimeline - happy path', async (t) => {
   t.pass()
 })
 
-test('localizePowerModeTimelineLog - shifts segments[].from/to to local wall-clock', (t) => {
-  const utcFrom = Date.UTC(2026, 5, 1, 4, 0, 0)
-  const utcTo = Date.UTC(2026, 5, 1, 8, 0, 0)
-  const log = [{ minerId: 'm1', container: 'c1', segments: [{ from: utcFrom, to: utcTo, powerMode: 'normal', status: 'mining' }] }]
-
-  const localized = localizePowerModeTimelineLog(log, 'America/Campo_Grande')
-  t.is(localized[0].segments[0].from, Date.UTC(2026, 5, 1, 0, 0, 0), 'from shifted -4h')
-  t.is(localized[0].segments[0].to, Date.UTC(2026, 5, 1, 4, 0, 0), 'to shifted -4h')
-  t.is(localized[0].segments[0].powerMode, 'normal', 'other segment fields preserved')
-  t.is(log[0].segments[0].from, utcFrom, 'input log left untouched')
-  t.pass()
-})
-
-test('localizePowerModeTimelineLog - UTC is a no-op', (t) => {
-  const log = [{ minerId: 'm1', segments: [{ from: 1, to: 2 }] }]
-  t.is(localizePowerModeTimelineLog(log, 'UTC'), log)
-  t.pass()
-})
-
 test('getPowerModeTimeline - default start/end', async (t) => {
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'key1' }] },
@@ -2975,7 +2954,7 @@ test('getPowerModeTimeline - default start/end', async (t) => {
   t.pass()
 })
 
-test('getPowerModeTimeline - timezone param converts an explicit start/end', async (t) => {
+test('getPowerModeTimeline - timezone param never reinterprets an explicit start/end', async (t) => {
   let capturedPayload
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'key1' }] },
@@ -2987,14 +2966,14 @@ test('getPowerModeTimeline - timezone param converts an explicit start/end', asy
     }
   })
 
-  const localStart = Date.UTC(2026, 5, 1, 0, 0, 0)
-  const localEnd = Date.UTC(2026, 5, 1, 1, 0, 0)
+  const start = Date.UTC(2026, 5, 1, 0, 0, 0)
+  const end = Date.UTC(2026, 5, 1, 1, 0, 0)
 
   await getPowerModeTimeline(mockCtx, {
-    query: { start: localStart, end: localEnd, timezone: 'America/Campo_Grande' }
+    query: { start, end, timezone: 'America/Campo_Grande' }
   })
 
-  t.is(capturedPayload.start, localStart + 4 * 3600000, 'should shift the explicit start to real UTC')
+  t.is(capturedPayload.start, start, 'the explicit start is a true UTC instant, same as export')
   t.pass()
 })
 
@@ -3767,7 +3746,7 @@ test('getContainerHistory - uses defaults when no start/end', async (t) => {
   t.pass()
 })
 
-test('getContainerHistory - timezone param converts an explicit start/end', async (t) => {
+test('getContainerHistory - timezone param never reinterprets an explicit start/end', async (t) => {
   let capturedPayload
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'key1' }] },
@@ -3779,16 +3758,16 @@ test('getContainerHistory - timezone param converts an explicit start/end', asyn
     }
   })
 
-  const localStart = Date.UTC(2026, 5, 1, 0, 0, 0)
-  const localEnd = Date.UTC(2026, 5, 1, 1, 0, 0)
+  const start = Date.UTC(2026, 5, 1, 0, 0, 0)
+  const end = Date.UTC(2026, 5, 1, 1, 0, 0)
 
   await getContainerHistory(mockCtx, {
     params: { id: 'bitdeer-9a' },
-    query: { start: localStart, end: localEnd, timezone: 'America/Campo_Grande' }
+    query: { start, end, timezone: 'America/Campo_Grande' }
   })
 
-  t.is(capturedPayload.start, localStart + 4 * 3600000, 'should shift the explicit start to real UTC')
-  t.is(capturedPayload.end, localEnd + 4 * 3600000, 'should shift the explicit end to real UTC')
+  t.is(capturedPayload.start, start, 'the explicit start is a true UTC instant, same as export')
+  t.is(capturedPayload.end, end, 'the explicit end is a true UTC instant, same as export')
   t.pass()
 })
 
@@ -5021,6 +5000,19 @@ test('buildHourlyDowntime + aggregateDowntimeDaily - numeric ts entries fall bac
   t.alike(daily[0].timeRange,
     { startTs: DOWNTIME_DAY_TS, endTs: DOWNTIME_DAY_TS + 24 * DOWNTIME_HOUR_MS - 1 },
     'daily bucket always carries a timeRange')
+  t.pass()
+})
+
+test('aggregateDowntimeDaily - buckets on local days in the given zone', (t) => {
+  // America/Campo_Grande is UTC-04:00 year-round, so local midnight is 04:00Z.
+  const sep1 = Date.UTC(2026, 8, 1, 4)
+  const hours = [sep1, sep1 + 19 * DOWNTIME_HOUR_MS, sep1 + 20 * DOWNTIME_HOUR_MS, sep1 + 24 * DOWNTIME_HOUR_MS]
+  const hourly = buildHourlyDowntime(hours.map(ts => ({ ts, site_power_w: 5000000 })), 10000000, new Map())
+
+  const daily = aggregateDowntimeDaily(hourly, 'America/Campo_Grande')
+  t.alike(daily.map(d => d.ts), [sep1, sep1 + 24 * DOWNTIME_HOUR_MS],
+    'hours either side of 00:00Z stay in the same local day; 04:00Z starts the next')
+  t.alike(daily[0].timeRange, { startTs: sep1, endTs: sep1 + 24 * DOWNTIME_HOUR_MS - 1 }, 'local day range')
   t.pass()
 })
 

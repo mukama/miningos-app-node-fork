@@ -5,11 +5,7 @@ const {
   getStartOfDay,
   localDayStart,
   convertMsToSeconds,
-  getPeriodEndDate,
-  aggregateByPeriod,
-  getPeriodKey,
-  isTimestampInPeriod,
-  getFilteredPeriodData
+  aggregateByPeriod
 } = require('../../../workers/lib/period.utils')
 const { LOCKED_TIMEZONE_DEFAULT } = require('../../../workers/lib/constants')
 
@@ -143,106 +139,19 @@ test('aggregateByPeriod - omitting options preserves legacy sum-everything behav
   t.is(result[0].rate, 0.4, 'rate is summed when meanKeys not provided')
 })
 
-test('getPeriodKey - daily returns start of day', (t) => {
-  const ts = 1700050000000
-  const result = getPeriodKey(ts, 'daily')
-  t.is(result % 86400000, 0, 'should be start of day')
-  t.pass()
-})
-
-test('getPeriodKey - monthly returns start of month', (t) => {
-  const ts = 1700050000000
-  const result = getPeriodKey(ts, 'monthly')
-  const date = new Date(result)
-  t.is(date.getDate(), 1, 'should be first day of month')
-  t.pass()
-})
-
-test('getPeriodKey - yearly returns start of year', (t) => {
-  const ts = 1700050000000
-  const result = getPeriodKey(ts, 'yearly')
-  const date = new Date(result)
-  t.is(date.getMonth(), 0, 'should be January')
-  t.is(date.getDate(), 1, 'should be first day')
-  t.pass()
-})
-
-test('isTimestampInPeriod - daily exact match', (t) => {
-  const ts = 1700006400000
-  t.ok(isTimestampInPeriod(ts, ts, 'daily'), 'should match exact timestamp')
-  t.ok(!isTimestampInPeriod(ts + 86400000, ts, 'daily'), 'should not match different day')
-  t.pass()
-})
-
-test('isTimestampInPeriod - monthly range', (t) => {
-  const monthStart = new Date(2023, 10, 1).getTime()
-  const midMonth = new Date(2023, 10, 15).getTime()
-  const nextMonth = new Date(2023, 11, 1).getTime()
-
-  t.ok(isTimestampInPeriod(midMonth, monthStart, 'monthly'), 'mid-month should be in period')
-  t.ok(!isTimestampInPeriod(nextMonth, monthStart, 'monthly'), 'next month should not be in period')
-  t.pass()
-})
-
-test('getFilteredPeriodData - daily returns direct lookup', (t) => {
-  const data = { 1700006400000: { value: 42 } }
-  const result = getFilteredPeriodData(data, 1700006400000, 'daily', () => null)
-  t.alike(result, { value: 42 }, 'should return data for timestamp')
-  t.pass()
-})
-
-test('getFilteredPeriodData - daily returns empty object for missing with default filterFn', (t) => {
-  const data = {}
-  const result = getFilteredPeriodData(data, 1700006400000, 'daily')
-  t.alike(result, {}, 'should return empty object for missing data with default filterFn')
-  t.pass()
-})
-
-test('getFilteredPeriodData - monthly filters with callback', (t) => {
-  const monthStart = new Date(2023, 10, 1).getTime()
-  const day1 = new Date(2023, 10, 5).getTime()
-  const day2 = new Date(2023, 10, 15).getTime()
-  const data = {
-    [day1]: { value: 10 },
-    [day2]: { value: 20 }
-  }
-
-  const result = getFilteredPeriodData(data, monthStart, 'monthly', (entries) => {
-    return entries.reduce((sum, [, val]) => sum + val.value, 0)
-  })
-
-  t.is(result, 30, 'should sum values in period')
-  t.pass()
-})
-
 test('convertMsToSeconds - converts milliseconds to seconds', (t) => {
   t.is(convertMsToSeconds(1700006400000), 1700006400, 'should convert ms to seconds')
   t.is(convertMsToSeconds(1700006400500), 1700006400, 'should floor fractional seconds')
   t.pass()
 })
 
-test('getPeriodEndDate - monthly returns next month', (t) => {
-  const monthStart = new Date(2023, 10, 1).getTime()
-  const result = getPeriodEndDate(monthStart, 'monthly')
-  t.is(result.getMonth(), 11, 'should be next month')
-  t.is(result.getFullYear(), 2023, 'should be same year')
-  t.pass()
-})
-
-test('getPeriodEndDate - yearly returns next year', (t) => {
-  const yearStart = new Date(2023, 0, 1).getTime()
-  const result = getPeriodEndDate(yearStart, 'yearly')
-  t.is(result.getFullYear(), 2024, 'should be next year')
-  t.pass()
-})
-
-test('aggregateByPeriod - monthly buckets are grouped and stamped in UTC', (t) => {
+test('aggregateByPeriod - monthly buckets are grouped and stamped in the given zone', (t) => {
   const log = [
     { ts: Date.UTC(2026, 7, 1), revenueBTC: 1 },
     { ts: Date.UTC(2026, 7, 2), revenueBTC: 2 }
   ]
 
-  const [month] = aggregateByPeriod(log, 'monthly')
+  const [month] = aggregateByPeriod(log, 'monthly', [], { timezone: 'UTC' })
 
   t.is(month.ts, Date.UTC(2026, 7, 1), 'stamped on the UTC first of the month')
   t.is(month.month, 8)
@@ -251,16 +160,54 @@ test('aggregateByPeriod - monthly buckets are grouped and stamped in UTC', (t) =
   t.pass()
 })
 
-test('aggregateByPeriod - yearly buckets are grouped and stamped in UTC', (t) => {
+test('aggregateByPeriod - yearly buckets are grouped and stamped in the given zone', (t) => {
   const log = [
     { ts: Date.UTC(2026, 0, 1), revenueBTC: 1 },
     { ts: Date.UTC(2026, 11, 31), revenueBTC: 2 }
   ]
 
-  const [year] = aggregateByPeriod(log, 'yearly')
+  const [year] = aggregateByPeriod(log, 'yearly', [], { timezone: 'UTC' })
 
   t.is(year.ts, Date.UTC(2026, 0, 1), 'stamped on the UTC first of the year')
   t.is(year.year, 2026)
   t.is(year.revenueBTC, 3, 'both UTC days land in the same bucket')
+  t.pass()
+})
+
+test('aggregateByPeriod - monthly cuts in the resolved zone, not UTC', (t) => {
+  // 02:00 UTC on Sep 1 is still Aug 31 in America/Campo_Grande (UTC-4).
+  const log = [
+    { ts: Date.UTC(2026, 7, 31, 20), revenueBTC: 1 },
+    { ts: Date.UTC(2026, 8, 1, 2), revenueBTC: 2 }
+  ]
+
+  const [month] = aggregateByPeriod(log, 'monthly', [], { timezone: 'America/Campo_Grande' })
+
+  t.is(month.month, 8, 'both entries fall in the local August, not a UTC-split August/September')
+  t.is(month.revenueBTC, 3, 'both entries land in the same local-month bucket')
+  t.pass()
+})
+
+test('aggregateByPeriod - weekly buckets are Monday-start in the resolved zone, matching pools', (t) => {
+  // Sep 2 2026 is a Wednesday, and Aug 31 2026 is the Monday of its local week in
+  // America/Campo_Grande (UTC-4).
+  const log = [
+    { ts: Date.UTC(2026, 8, 2, 12), revenueBTC: 1 },
+    { ts: Date.UTC(2026, 8, 3, 12), revenueBTC: 2 }
+  ]
+
+  const [week] = aggregateByPeriod(log, 'weekly', [], { timezone: 'America/Campo_Grande' })
+
+  t.is(week.ts, Date.UTC(2026, 7, 31, 4), 'stamped on the Monday-start local week, not the UTC Sunday-start week')
+  t.is(week.revenueBTC, 3, 'both entries land in the same local week')
+  t.pass()
+})
+
+test('aggregateByPeriod - weekly falls back to LOCKED_TIMEZONE_DEFAULT when no timezone option is given', (t) => {
+  const ts = Date.UTC(2026, 8, 2, 12)
+  const [withDefault] = aggregateByPeriod([{ ts, revenueBTC: 1 }], 'weekly')
+  const [withExplicit] = aggregateByPeriod([{ ts, revenueBTC: 1 }], 'weekly', [], { timezone: LOCKED_TIMEZONE_DEFAULT })
+
+  t.is(withDefault.ts, withExplicit.ts, 'omitting timezone resolves the same as passing the constants default explicitly')
   t.pass()
 })

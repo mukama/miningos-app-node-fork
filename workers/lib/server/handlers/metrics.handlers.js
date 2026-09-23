@@ -20,6 +20,7 @@ const {
 } = require('../../constants')
 const {
   getStartOfDay,
+  localDayStart,
   safeDiv,
   flattenRpcResults
 } = require('../../utils')
@@ -31,10 +32,8 @@ const {
   parseEntryTs,
   parseEntryTimeRange,
   validateStartEnd,
-  resolveTimezone,
   resolveStartEnd,
   resolveOptionalTimeMs,
-  convertUtcToLocalMs,
   iterateRpcEntries,
   sumObjectValues,
   extractContainerFromMinerKey,
@@ -1686,12 +1685,9 @@ function resolvePowerModeTimelineInterval (start, end, requested) {
 
 async function getPowerModeTimeline (ctx, req) {
   const now = Date.now()
-  const timezone = resolveTimezone(ctx, req)
-  // Only an explicit start/end is wall-clock time to convert, and only when the
-  // request itself sent `timezone` explicitly - the computed defaults below are
-  // already real UTC instants relative to "now".
-  const start = resolveOptionalTimeMs(req, timezone, req.query.start, now - METRICS_TIME.ONE_MONTH_MS)
-  const end = resolveOptionalTimeMs(req, timezone, req.query.end, now)
+  // An explicit start/end is a true UTC instant, same as the computed defaults below.
+  const start = resolveOptionalTimeMs(req, req.query.start, now - METRICS_TIME.ONE_MONTH_MS)
+  const end = resolveOptionalTimeMs(req, req.query.end, now)
   const container = req.query.container || null
 
   if (start >= end) {
@@ -1808,21 +1804,6 @@ function processPowerModeTimelineData (results, containerFilter) {
   const aggregator = createPowerModeTimelineAggregator(containerFilter)
   aggregator.addResults(results)
   return aggregator.build()
-}
-
-// getPowerModeTimeline's log entries carry their timestamps as segments[].from/to
-// rather than a top-level `ts`, so they need their own mapper for withLocalizedLog.
-function localizePowerModeTimelineLog (log, timezone) {
-  if (!Array.isArray(log) || !timezone || timezone === 'UTC') return log
-
-  return log.map((entry) => ({
-    ...entry,
-    segments: (entry.segments || []).map((segment) => ({
-      ...segment,
-      from: convertUtcToLocalMs(segment.from, timezone),
-      to: convertUtcToLocalMs(segment.to, timezone)
-    }))
-  }))
 }
 
 async function getTemperature (ctx, req) {
@@ -2019,12 +2000,9 @@ async function getContainerHistory (ctx, req) {
   }
 
   const now = Date.now()
-  const timezone = resolveTimezone(ctx, req)
-  // Only an explicit start/end is wall-clock time to convert, and only when the
-  // request itself sent `timezone` explicitly - the computed defaults below are
-  // already real UTC instants relative to "now".
-  const start = resolveOptionalTimeMs(req, timezone, req.query.start, now - METRICS_TIME.ONE_DAY_MS)
-  const end = resolveOptionalTimeMs(req, timezone, req.query.end, now)
+  // An explicit start/end is a true UTC instant, same as the computed defaults below.
+  const start = resolveOptionalTimeMs(req, req.query.start, now - METRICS_TIME.ONE_DAY_MS)
+  const end = resolveOptionalTimeMs(req, req.query.end, now)
   const limit = Number(req.query.limit) || METRICS_DEFAULTS.CONTAINER_HISTORY_LIMIT
 
   if (start >= end) {
@@ -2249,11 +2227,12 @@ function buildHourlyDowntime (entries, nominalPowerW, decisionByHour) {
 }
 
 // Daily rates are the mean of the hourly rates over hours that have data, so
-// gaps in the stat log don't read as 100% downtime.
-function aggregateDowntimeDaily (hourlyLog) {
+// gaps in the stat log don't read as 100% downtime. Days are local calendar days in
+// `timezone`, the same grid finance/* buckets on, so pages that render both line up.
+function aggregateDowntimeDaily (hourlyLog, timezone = 'UTC') {
   const byDay = new Map()
   for (const entry of hourlyLog) {
-    const dayTs = getStartOfDay(entry.ts)
+    const dayTs = localDayStart(entry.ts, timezone)
     if (!byDay.has(dayTs)) byDay.set(dayTs, [])
     byDay.get(dayTs).push(entry)
   }
@@ -2262,7 +2241,8 @@ function aggregateDowntimeDaily (hourlyLog) {
     .sort(([a], [b]) => a - b)
     .map(([dayTs, hours]) => ({
       ts: dayTs,
-      timeRange: { startTs: dayTs, endTs: dayTs + METRICS_TIME.ONE_DAY_MS - 1 },
+      // A local day is 23-25h across a DST shift, so its end is the next day's start.
+      timeRange: { startTs: dayTs, endTs: localDayStart(dayTs + 1.5 * METRICS_TIME.ONE_DAY_MS, timezone) - 1 },
       powerW: hours.reduce((sum, h) => sum + h.powerW, 0) / hours.length,
       nominalPowerW: hours[0].nominalPowerW,
       downtimeRate: meanOfField(hours, 'downtimeRate'),
@@ -2297,7 +2277,7 @@ function calculateDowntimeSummary (log, nominalPowerW, hasForecastData) {
 }
 
 async function getDowntime (ctx, req) {
-  const { start, end } = resolveStartEnd(ctx, req)
+  const { start, end, timezone } = resolveStartEnd(ctx, req)
   const interval = req.query.interval ||
     ((end - start) <= METRICS_TIME.TWO_DAYS_MS ? '1h' : '1d')
 
@@ -2342,13 +2322,14 @@ async function getDowntime (ctx, req) {
 
   const decisionByHour = indexForecastDecisionsByHour(forecastRes)
   const hourly = buildHourlyDowntime(firstOrkEntries(powerRes), nominalPowerW, decisionByHour)
-  const log = interval === '1d' ? aggregateDowntimeDaily(hourly) : hourly
+  const log = interval === '1d' ? aggregateDowntimeDaily(hourly, timezone) : hourly
   const summary = calculateDowntimeSummary(log, nominalPowerW, decisionByHour.size > 0)
 
   return { log, summary }
 }
 
 module.exports = {
+  wantsMonthlyRollup,
   ...require('../../metrics.utils'),
   getHashrate,
   getMonthlyHashrate,
@@ -2385,7 +2366,6 @@ module.exports = {
   getPowerModeTimeline,
   processPowerModeTimelineData,
   resolvePowerModeTimelineInterval,
-  localizePowerModeTimelineLog,
   getTemperature,
   processTemperatureData,
   calculateTemperatureSummary,

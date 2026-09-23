@@ -365,6 +365,39 @@ test('getDailySeries - caches a completed month on ctx and does not refetch it',
   t.pass()
 })
 
+// Hourly power for every hour of Jan 2024, served from a plain handler so the tests see
+// exactly what getDailySeries asked for.
+function hourlyJanuaryHandler () {
+  const log = []
+  for (let ts = Date.UTC(2024, 0, 1); ts < Date.UTC(2024, 1, 1); ts += 3600000) log.push({ ts, powerW: 1 })
+  return async (ctx, req) => ({ log: log.filter(e => e.ts >= req.query.start && e.ts <= req.query.end) })
+}
+
+test('getDailySeries - a partially covered month is not cached as the whole month', async (t) => {
+  const ctx = {}
+  const handler = hourlyJanuaryHandler()
+  const DAY = 86400000
+  const jan1 = Date.UTC(2024, 0, 1)
+
+  await getDailySeries(ctx, jan1 + 9 * DAY, jan1 + 20 * DAY - 1, handler, 'powerW', 'UTC')
+  const full = await getDailySeries(ctx, jan1, Date.UTC(2024, 1, 1) - 1, handler, 'powerW', 'UTC')
+
+  t.is(Object.keys(full).length, 31, 'the full month is fetched, not answered with the earlier 11-day slice')
+})
+
+test('getDailySeries - a cached whole month is clamped to the requested days', async (t) => {
+  const ctx = {}
+  const handler = hourlyJanuaryHandler()
+  const DAY = 86400000
+  const jan1 = Date.UTC(2024, 0, 1)
+
+  await getDailySeries(ctx, jan1, Date.UTC(2024, 1, 1) - 1, handler, 'powerW', 'UTC')
+  const partial = await getDailySeries(ctx, jan1 + 9 * DAY, jan1 + 20 * DAY - 1, handler, 'powerW', 'UTC')
+
+  t.alike(Object.keys(partial).map(Number), Array.from({ length: 11 }, (_, i) => jan1 + (9 + i) * DAY),
+    'only Jan 10-20, not the rest of the cached month')
+})
+
 test('getDailySeries - a different ctx gets its own cache (no cross-request leakage)', async (t) => {
   const ts = Date.UTC(2024, 0, 15, 12)
   const buildCtx = (powerW) => withDataProxy({
@@ -1396,23 +1429,22 @@ test('getRevenueHourly - queries the pool with aggrHourly and shapes the log', a
   t.pass()
 })
 
-test('getRevenueHourly - timezone param converts start/end before querying', async (t) => {
+test('getRevenueHourly - timezone param never reinterprets start/end', async (t) => {
   let payload = null
   const mockCtx = withDataProxy({
     conf: { orks: [{ rpcPublicKey: 'k' }] },
     net_r0: { jRequest: async (key, method, p) => { payload = p; return [] } }
   })
 
-  const localStart = Date.UTC(2026, 5, 1, 0, 0, 0)
-  const localEnd = Date.UTC(2026, 5, 1, 1, 0, 0)
+  const start = Date.UTC(2026, 5, 1, 0, 0, 0)
+  const end = Date.UTC(2026, 5, 1, 1, 0, 0)
 
   await getRevenueHourly(mockCtx, {
-    query: { start: localStart, end: localEnd, timezone: 'America/Campo_Grande' }
+    query: { start, end, timezone: 'America/Campo_Grande' }
   })
 
-  // America/Campo_Grande is UTC-4 with no DST, so local midnight is 04:00 UTC.
-  t.is(payload.query.start, localStart + 4 * 3600000, 'should shift start to real UTC')
-  t.is(payload.query.end, localEnd + 4 * 3600000, 'should shift end to real UTC')
+  t.is(payload.query.start, start, 'start is a true UTC instant, same as export')
+  t.is(payload.query.end, end, 'end is a true UTC instant, same as export')
   t.pass()
 })
 
