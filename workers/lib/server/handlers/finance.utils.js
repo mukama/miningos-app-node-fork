@@ -29,8 +29,9 @@ function historyLimit (start, end) {
 
 // Worker timestamps arrive in whatever shape the upstream pool API uses: unix seconds
 // (f2pool `created_at`), unix ms, or an ISO-8601 string (ocean `ts`, e.g. "2026-05-28T16:46:30").
-// Anything this returns unparsed becomes NaN in localDayStart and the record is dropped without
-// a trace, so every shape has to be handled here rather than at the call sites.
+// Anything it can't parse comes back as 0, and every caller skips a 0 before bucketing, so
+// the record is dropped without a trace - every shape has to be handled here rather than
+// at the call sites.
 function normalizeTimestampMs (ts) {
   if (!ts) return 0
 
@@ -53,7 +54,7 @@ function normalizeTimestampMs (ts) {
 // `opts.start`/`opts.end` drop transactions whose own (mining) date falls outside the
 // window: the store selects records by their settle time, so a payout inside the window
 // can still carry a mining_date before or after it.
-function processTransactions (results, opts, timezone = 'UTC') {
+function processTransactions (results, opts, timezone) {
   const trackFees = opts && opts.trackFees
   const start = Number.isFinite(opts?.start) ? opts.start : -Infinity
   const end = Number.isFinite(opts?.end) ? opts.end : Infinity
@@ -92,7 +93,7 @@ function processTransactions (results, opts, timezone = 'UTC') {
   return daily
 }
 
-function addRebates (daily, rebates, timezone = 'UTC') {
+function addRebates (daily, rebates, timezone) {
   for (const day of Object.values(daily)) day.payoutBTC = day.revenueBTC
   for (const r of rebates) {
     if (!Number.isFinite(r?.ts) || !Number.isFinite(r?.amountBTC)) continue
@@ -131,7 +132,7 @@ function extractCurrentPrice (results) {
   return 0
 }
 
-function processBlockData (results, timezone = 'UTC') {
+function processBlockData (results, timezone) {
   const daily = {}
   for (const res of results) {
     if (!res || res.error) continue

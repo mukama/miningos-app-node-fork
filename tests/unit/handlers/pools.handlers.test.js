@@ -11,8 +11,6 @@ const {
   flattenPoolHashrateHistory,
   resolvePoolHashrateForBuckets,
   groupByBucket,
-  localDayStartTs,
-  localWeekStartTs,
   localBucketStartTs,
   getPoolThingConfig,
   getPoolStatsContainers
@@ -289,7 +287,7 @@ test('flattenTransactionResults - extracts daily entries from ext-data', (t) => 
       ]
     }]
   ]
-  const entries = flattenTransactionResults(results)
+  const entries = flattenTransactionResults(results, 'UTC')
   t.is(entries.length, 1, 'should have 1 daily entry')
   t.ok(entries[0].revenue > 0, 'should have revenue')
   t.ok(entries[0].hashrate > 0, 'should have hashrate')
@@ -298,7 +296,7 @@ test('flattenTransactionResults - extracts daily entries from ext-data', (t) => 
 
 test('flattenTransactionResults - handles error results', (t) => {
   const results = [{ error: 'timeout' }]
-  const entries = flattenTransactionResults(results)
+  const entries = flattenTransactionResults(results, 'UTC')
   t.is(entries.length, 0, 'should be empty for errors')
   t.pass()
 })
@@ -345,29 +343,10 @@ test('groupByBucket - handles missing timestamps', (t) => {
   t.pass()
 })
 
-test('localDayStartTs - aligns to local midnight, not UTC midnight', (t) => {
-  // 2026-01-05 23:30 UTC is still 2026-01-05 in America/New_York (UTC-5), but
-  // already 2026-01-06 in UTC - the local day start must differ from the UTC one.
-  const ts = Date.UTC(2026, 0, 5, 23, 30)
-  const utcDayStart = localDayStartTs(ts, 'UTC')
-  const nyDayStart = localDayStartTs(ts, 'America/New_York')
-  t.is(utcDayStart, Date.UTC(2026, 0, 5), 'UTC day start is UTC midnight')
-  t.is(nyDayStart, Date.UTC(2026, 0, 5, 5), 'NY day start is 05:00 UTC (local midnight)')
-  t.pass()
-})
-
-test('localWeekStartTs - buckets Mon-Sun into the same Monday-start week', (t) => {
-  const monday = Date.UTC(2026, 0, 5)
-  const sunday = Date.UTC(2026, 0, 11, 12)
-  t.is(localWeekStartTs(monday, 'UTC'), monday, 'monday is its own week start')
-  t.is(localWeekStartTs(sunday, 'UTC'), monday, 'sunday rolls back to monday')
-  t.pass()
-})
-
 test('localBucketStartTs - dispatches by range', (t) => {
   const ts = Date.UTC(2026, 0, 15, 6)
-  t.is(localBucketStartTs(ts, '1D', 'UTC'), localDayStartTs(ts, 'UTC'), '1D uses day start')
-  t.is(localBucketStartTs(ts, '1W', 'UTC'), localWeekStartTs(ts, 'UTC'), '1W uses week start')
+  t.is(localBucketStartTs(ts, '1D', 'UTC'), Date.UTC(2026, 0, 15), '1D uses day start')
+  t.is(localBucketStartTs(ts, '1W', 'UTC'), Date.UTC(2026, 0, 12), '1W uses the Monday-start week')
   t.is(localBucketStartTs(ts, '1M', 'UTC'), Date.UTC(2026, 0, 1), '1M uses month start')
   t.pass()
 })
