@@ -7,6 +7,7 @@ const {
 const {
   wantsMonthlyRollup,
   getHashrate,
+  getPoolHashrate,
   getConsumption,
   getEfficiency,
   getMinerStatus,
@@ -58,6 +59,20 @@ module.exports = (ctx) => {
         ],
         ENDPOINTS.METRICS_HASHRATE,
         getHashrate
+      )
+    },
+    {
+      method: HTTP_METHODS.GET,
+      url: ENDPOINTS.METRICS_POOL_HASHRATE,
+      schema: {
+        querystring: schemas.query.poolHashrate
+      },
+      preValidation: rejectTimezone(),
+      ...createCachedAuthRoute(
+        ctx,
+        (req) => ['metrics/pool-hashrate', req.query.interval, req.query.lookbackDays],
+        ENDPOINTS.METRICS_POOL_HASHRATE,
+        getPoolHashrate
       )
     },
     {
