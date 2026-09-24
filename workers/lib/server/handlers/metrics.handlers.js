@@ -2333,9 +2333,13 @@ async function getDowntime (ctx, req) {
 // Serves the dashboard hash-rate chart's per-pool series, which the UI used to
 // assemble client-side by paginating 30-90 days of raw 5-min stats-history
 // rows through /auth/ext-data. Buckets are floor-aligned and hashrate is
-// averaged across every stats entry of a poolType in the bucket - the same
-// shape and semantics the chart's downsampling produced, so the swap is not a
-// visual change. Values stay in H/s; the UI converts.
+// averaged across every stats entry of a poolType in the bucket - deliberately
+// the same semantics the chart's downsampling produced, so the swap is not a
+// visual change. stats entries are per account and orks report disjoint racks,
+// so a multi-account pool (or one spread over orks) plots the per-account
+// average, not the pool total; balance-history-style avg-per-account-then-sum
+// would change the plotted numbers and is left as a deliberate follow-up.
+// Values stay in H/s; the UI converts.
 function bucketPoolHashrate (results, intervalMs) {
   const buckets = new Map()
 
