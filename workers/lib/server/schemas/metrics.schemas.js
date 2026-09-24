@@ -112,6 +112,18 @@ const schemas = {
       },
       required: ['start', 'end']
     },
+    // No start/end: the window is lookbackDays back from now, so the cache key
+    // stays a handful of interval:days combinations instead of a fresh entry
+    // per request timestamp.
+    poolHashrate: {
+      type: 'object',
+      properties: {
+        interval: { type: 'string', enum: ['5m', '30m', '1h', '3h'] },
+        lookbackDays: { type: 'integer', minimum: 1, maximum: 90 },
+        overwriteCache: { type: 'boolean' }
+      },
+      required: ['interval', 'lookbackDays']
+    },
     powerModeTimeline: {
       type: 'object',
       properties: {

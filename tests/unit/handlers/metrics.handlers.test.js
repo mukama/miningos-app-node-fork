@@ -49,7 +49,9 @@ const {
   indexForecastDecisionsByHour,
   buildHourlyDowntime,
   aggregateDowntimeDaily,
-  calculateDowntimeSummary
+  calculateDowntimeSummary,
+  getPoolHashrate,
+  bucketPoolHashrate
 } = require('../../../workers/lib/server/handlers/metrics.handlers')
 const { withDataProxy } = require('../helpers/mockHelpers')
 const { METRICS_TIME } = require('../../../workers/lib/constants')
@@ -5317,5 +5319,125 @@ test('getHashrate 1M - an unknown timezone is a named bad request, not a raw Int
     /ERR_EXPORT_TIMEZONE_INVALID/,
     'the same error the exports raise for the same input'
   )
+  t.pass()
+})
+
+// ==================== Pool Hashrate Tests ====================
+
+const FIVE_MIN_MS = 5 * 60 * 1000
+
+test('bucketPoolHashrate - floor-buckets rows and averages per pool', (t) => {
+  const base = 1700000000000 - (1700000000000 % METRICS_TIME.THREE_HOURS_MS)
+  const row = (ts, oceanHs, f2poolHs) => ({
+    ts: String(ts),
+    stats: [
+      { poolType: 'ocean', hashrate: oceanHs },
+      { poolType: 'f2pool', hashrate: f2poolHs }
+    ]
+  })
+
+  const log = bucketPoolHashrate(
+    [[[row(base, 100, 10), row(base + FIVE_MIN_MS, 300, 30), row(base + METRICS_TIME.THREE_HOURS_MS, 500, 50)]]],
+    METRICS_TIME.THREE_HOURS_MS
+  )
+
+  t.is(log.length, 2, 'two buckets')
+  t.is(log[0].ts, base, 'bucket ts is floor-aligned')
+  t.is(log[0].stats.find(s => s.poolType === 'ocean').hashrate, 200, 'ocean averaged within the bucket')
+  t.is(log[0].stats.find(s => s.poolType === 'f2pool').hashrate, 20, 'f2pool averaged within the bucket')
+  t.is(log[1].ts, base + METRICS_TIME.THREE_HOURS_MS)
+  t.is(log[1].stats.find(s => s.poolType === 'ocean').hashrate, 500)
+  t.pass()
+})
+
+test('bucketPoolHashrate - merges rows across orks and windows, sorts ascending', (t) => {
+  const t0 = 1700000000000 - (1700000000000 % FIVE_MIN_MS)
+  const t1 = t0 + FIVE_MIN_MS
+  const windowA = [[{ ts: t1, stats: [{ poolType: 'ocean', hashrate: 400 }] }]]
+  const windowB = [
+    [{ ts: t0, stats: [{ poolType: 'ocean', hashrate: 100 }] }],
+    [{ ts: t0, stats: [{ poolType: 'ocean', hashrate: 300 }] }]
+  ]
+
+  const log = bucketPoolHashrate([windowA, windowB], FIVE_MIN_MS)
+
+  t.is(log.length, 2)
+  t.is(log[0].ts, t0, 'earlier bucket first even though fetched later')
+  t.is(log[0].stats[0].hashrate, 200, 'both orks contribute to the average')
+  t.is(log[1].stats[0].hashrate, 400)
+  t.pass()
+})
+
+test('bucketPoolHashrate - tolerates malformed rows and null hashrates', (t) => {
+  const t0 = 1700000000000 - (1700000000000 % FIVE_MIN_MS)
+  const log = bucketPoolHashrate(
+    [[
+      'not-an-array',
+      [
+        { ts: 'garbage', stats: [{ poolType: 'ocean', hashrate: 100 }] },
+        { ts: t0 },
+        { ts: t0, stats: [{ poolType: 'ocean', hashrate: null }, { hashrate: 5 }] }
+      ]
+    ]],
+    FIVE_MIN_MS
+  )
+
+  t.is(log.length, 1, 'only the parsable row lands')
+  t.alike(log[0].stats, [{ poolType: 'ocean', hashrate: 0 }], 'null hashrate counts as zero, typeless entry dropped')
+  t.pass()
+})
+
+test('getPoolHashrate - queries week-sized stats-history windows with a trimmed projection', async (t) => {
+  const captured = []
+  const mockCtx = withDataProxy({
+    conf: { orks: [{ rpcPublicKey: 'key1' }] },
+    net_r0: {
+      jRequest: async (key, method, payload) => {
+        captured.push(payload)
+        return []
+      }
+    }
+  })
+
+  const result = await getPoolHashrate(mockCtx, { query: { interval: '3h', lookbackDays: 30 } })
+
+  t.alike(result, { log: [] })
+  t.is(captured.length, 5, '30 days split into 5 windows')
+  const spanMs = 30 * METRICS_TIME.ONE_DAY_MS
+  t.ok(captured[0].query.start >= Date.now() - spanMs - 1000, 'window walk starts at the lookback horizon')
+  for (const payload of captured) {
+    t.is(payload.type, 'minerpool')
+    t.is(payload.query.key, 'stats-history')
+    t.ok(payload.query.end - payload.query.start < METRICS_TIME.SEVEN_DAYS_MS, 'window fits in a week')
+    t.alike(payload.query.fields, { ts: 1, 'stats.poolType': 1, 'stats.hashrate': 1 }, 'only charted fields requested')
+  }
+  for (let i = 1; i < captured.length; i++) {
+    t.is(captured[i].query.start, captured[i - 1].query.end + 1, 'windows do not overlap or leave gaps')
+  }
+  t.pass()
+})
+
+test('getPoolHashrate - returns the bucketed per-pool log', async (t) => {
+  const t0 = Date.now() - (Date.now() % METRICS_TIME.THREE_HOURS_MS) - METRICS_TIME.THREE_HOURS_MS
+  const mockCtx = withDataProxy({
+    conf: { orks: [{ rpcPublicKey: 'key1' }] },
+    net_r0: {
+      jRequest: async (key, method, payload) => {
+        if (payload.query.start <= t0 && t0 <= payload.query.end) {
+          return [
+            { ts: String(t0), stats: [{ poolType: 'ocean', hashrate: 100 }] },
+            { ts: String(t0 + FIVE_MIN_MS), stats: [{ poolType: 'ocean', hashrate: 300 }] }
+          ]
+        }
+        return []
+      }
+    }
+  })
+
+  const result = await getPoolHashrate(mockCtx, { query: { interval: '3h', lookbackDays: 1 } })
+
+  t.is(result.log.length, 1)
+  t.is(result.log[0].ts, t0)
+  t.alike(result.log[0].stats, [{ poolType: 'ocean', hashrate: 200 }])
   t.pass()
 })

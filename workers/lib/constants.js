@@ -185,6 +185,7 @@ const ENDPOINTS = {
 
   // Metrics endpoints
   METRICS_HASHRATE: '/auth/metrics/hashrate',
+  METRICS_POOL_HASHRATE: '/auth/metrics/pool-hashrate',
   METRICS_CONSUMPTION: '/auth/metrics/consumption',
   METRICS_EFFICIENCY: '/auth/metrics/efficiency',
   METRICS_MINER_STATUS: '/auth/metrics/miner-status',
@@ -785,6 +786,15 @@ const MINERPOOL_EXT_DATA_KEYS = {
   STATS: 'stats',
   STATS_HISTORY: 'stats-history',
   HASHRATE_HISTORY: 'hashrate-history'
+}
+
+// Bucket sizes /auth/metrics/pool-hashrate serves; keys are the wire values of
+// its interval param. stats-history rows arrive every 5 min, so 5m is the floor.
+const POOL_HASHRATE_INTERVALS_MS = {
+  '5m': 5 * 60 * 1000,
+  '30m': 30 * 60 * 1000,
+  '1h': 60 * 60 * 1000,
+  '3h': 3 * 60 * 60 * 1000
 }
 
 const ELECTRICITY_EXT_DATA_KEYS = {
@@ -1451,6 +1461,7 @@ module.exports = {
   AGGR_FIELDS,
   PERIOD_TYPES,
   MINERPOOL_EXT_DATA_KEYS,
+  POOL_HASHRATE_INTERVALS_MS,
   NON_METRIC_KEYS,
   BTC_SATS,
   RANGE_BUCKETS,
