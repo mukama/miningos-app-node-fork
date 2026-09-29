@@ -349,10 +349,10 @@ function processForecastHistory (results, timezone) {
         const ts = localDayStart(Number(h.start), timezone)
         const d = daily[ts] ??= { energySalesGrossUSD: 0, energySalesTaxesAndFeesUSD: 0, soldMWh: 0, availableMWh: 0, allMineNetUSD: 0, allSellNetUSD: 0, optimalNetUSD: 0 }
         const mwh = safeDiv(h.energySalesRevenue, h.energySalesRevenuePerMwh) || 0
-        const sellNet = h.energySalesRevenue - (h.energySalesTaxesAndFees || 0)
-        const mineNet = (h.miningRevenue || 0) - (h.taxesAndFees || 0)
+        const sellNet = h.energySalesRevenue || 0
+        const mineNet = h.miningRevenue || 0
         if (h.isEnergySelected === true) {
-          d.energySalesGrossUSD += h.energySalesRevenue
+          d.energySalesGrossUSD += h.energySellPrice || 0
           d.energySalesTaxesAndFeesUSD += h.energySalesTaxesAndFees || 0
           d.soldMWh += mwh
         }
@@ -960,7 +960,7 @@ async function getRevenueSummary (ctx, req) {
       start,
       end,
       includeDays: false,
-      forecastFields: { start: 1, energySalesRevenue: 1, energySalesRevenuePerMwh: 1, energySalesTaxesAndFees: 1, miningRevenue: 1, taxesAndFees: 1, isEnergySelected: 1 }
+      forecastFields: { start: 1, energySellPrice: 1, energySalesRevenue: 1, energySalesRevenuePerMwh: 1, energySalesTaxesAndFees: 1, miningRevenue: 1, taxesAndFees: 1, isEnergySelected: 1 }
     }).then(r => cb(null, r)).catch(cb),
 
     (cb) => ctx.dataProxy.requestData(RPC_METHODS.GET_WRK_EXT_DATA, {
@@ -1210,6 +1210,7 @@ function calculateDetailedRevenueSummary (log, currentBtcPrice) {
     totalAvailableMWh: totals.availableMWh,
     totalAllMineNetUSD: totals.allMineNetUSD,
     totalAllSellNetUSD: totals.allSellNetUSD,
+    totalAllSellNetUSDPerMWh: safeDiv(totals.allSellNetUSD, totals.availableMWh),
     totalOptimalNetUSD: totals.optimalNetUSD,
     totalMiningNetUSD: totals.miningNetUSD,
     totalNetCashUSD: totals.netCashUSD,
