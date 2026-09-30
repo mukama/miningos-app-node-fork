@@ -78,6 +78,7 @@ test('setGlobalConfig - basic functionality', async (t) => {
 
 test('getFeatureConfig - returns feature config from context', async (t) => {
   const mockCtx = {
+    globalDataLib: { getGlobalData: async () => ({}) },
     conf: {
       featureConfig: { feature1: true, feature2: false }
     }
@@ -91,6 +92,7 @@ test('getFeatureConfig - returns feature config from context', async (t) => {
 
 test('getFeatureConfig - passes through a configured lockedTimezone', async (t) => {
   const mockCtx = {
+    globalDataLib: { getGlobalData: async () => ({}) },
     conf: {
       featureConfig: { lockedTimezone: 'America/Campo_Grande' }
     }
@@ -103,6 +105,7 @@ test('getFeatureConfig - passes through a configured lockedTimezone', async (t) 
 
 test('getFeatureConfig - defaults lockedTimezone when common.json omits it', async (t) => {
   const mockCtx = {
+    globalDataLib: { getGlobalData: async () => ({}) },
     conf: {
       featureConfig: { feature1: true }
     }
@@ -115,11 +118,27 @@ test('getFeatureConfig - defaults lockedTimezone when common.json omits it', asy
 })
 
 test('getFeatureConfig - defaults lockedTimezone when featureConfig is missing entirely', async (t) => {
-  const mockCtx = { conf: {} }
+  const mockCtx = { globalDataLib: { getGlobalData: async () => ({}) }, conf: {} }
 
   const result = await getFeatureConfig(mockCtx)
   t.is(result.lockedTimezone, LOCKED_TIMEZONE_DEFAULT)
   t.pass()
+})
+
+test('getFeatureConfig - merges feature flags under site config', async (t) => {
+  const mockCtx = {
+    globalDataLib: {
+      getGlobalData: async (req) => {
+        t.is(req.type, GLOBAL_DATA_TYPES.FEATURES)
+        return { inventory: true, flagOnly: true }
+      }
+    },
+    conf: { featureConfig: { inventory: false } }
+  }
+
+  const result = await getFeatureConfig(mockCtx)
+  t.is(result.flagOnly, true, 'flag-only keys are included')
+  t.is(result.inventory, false, 'site config wins on conflicts')
 })
 
 test('getFeatures - returns features from globalDataLib', async (t) => {

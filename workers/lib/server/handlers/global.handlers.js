@@ -48,6 +48,7 @@ async function setGlobalData (ctx, req) {
 async function getFeatureConfig (ctx) {
   const featureConfig = ctx.conf.featureConfig || {}
   return {
+    ...await getFeatures(ctx),
     ...featureConfig,
     lockedTimezone: featureConfig.lockedTimezone || LOCKED_TIMEZONE_DEFAULT
   }
