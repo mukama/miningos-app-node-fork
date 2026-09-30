@@ -2,11 +2,12 @@
 const { SUPER_ADMIN_ID, MIGRATED_USER_ROLES } = require('./constants')
 
 class AuthLib {
-  constructor ({ httpc, httpd, userService, auth }) {
+  constructor ({ httpc, httpd, userService, auth, microsoftTenant }) {
     this._httpc = httpc
     this._httpd = httpd
     this._userService = userService
     this._auth = auth
+    this._microsoftTenant = microsoftTenant
   }
 
   _permsMatch (perms, perm) {
@@ -48,6 +49,7 @@ class AuthLib {
   }
 
   async start () {
+    await this._userService.init()
     this._auth.addHandlers({
       google: this._resolveOAuthGoogle.bind(this),
       microsoft: this._resolveOAuthMicrosoft.bind(this)
@@ -113,20 +115,22 @@ class AuthLib {
       }
     )
 
-    if (!info) {
+    if (!info?.verified_email || !info.id) {
       return null
     }
 
+    await this._userService.bindOAuthSubject(info.email, 'google', info.id)
     return {
       email: info.email
     }
   }
 
   async _resolveOAuthMicrosoft (ctx, req) {
-    let accessToken
+    let accessToken, idToken
     try {
       const oauthRes = await this._httpd.server.microsoftOAuth2.getAccessTokenFromAuthorizationCodeFlow(req)
       accessToken = oauthRes?.token?.access_token
+      idToken = oauthRes?.token?.id_token
     } catch (err) {
       const msg = err?.response?.body?.error_description || err?.message || 'ERR_MICROSOFT_TOKEN_EXCHANGE_FAILED'
       throw new Error(msg)
@@ -134,6 +138,12 @@ class AuthLib {
 
     if (!accessToken) {
       throw new Error('ERR_MICROSOFT_TOKEN_MISSING')
+    }
+
+    // id_token comes straight from the token endpoint over TLS, so its claims need no signature check (OIDC Core 3.1.3.7)
+    const { tid, oid } = idToken ? JSON.parse(Buffer.from(idToken.split('.')[1], 'base64url')) : {}
+    if (!oid || tid !== this._microsoftTenant) {
+      throw new Error('ERR_MICROSOFT_TENANT_INVALID')
     }
 
     const graphRes = await fetch('https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName,otherMails', {
@@ -171,6 +181,7 @@ class AuthLib {
       return null
     }
 
+    await this._userService.bindOAuthSubject(email.toLowerCase(), 'microsoft', oid)
     return { email: email.toLowerCase() }
   }
 }
