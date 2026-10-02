@@ -23,7 +23,6 @@ class UserService {
     }
   }
 
-  // sqlite_sequence keeps the highest users id ever issued, so deleting users does not reset it
   async hasCreatedUsers () {
     const row = await this._sqlite.getAsync('SELECT seq FROM sqlite_sequence WHERE name = \'users\'')
     return row?.seq > 1
