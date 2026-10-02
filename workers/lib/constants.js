@@ -23,7 +23,6 @@ const SUPER_ADMIN_ID = '1'
 const SUPER_ADMIN_ROLE = '*'
 
 const MIGRATED_USER_ROLES = {
-  DEFAULT: 'site_operator',
   READ_ONLY: 'read_only_user'
 }
 

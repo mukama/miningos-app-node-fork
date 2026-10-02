@@ -17,12 +17,11 @@ class AuthLib {
   }
 
   async migrateUsers (httpdAuth) {
-    const users = await this._auth.listUsers()
-    if (users.length > 1) {
-      // The super admin will already be present
-      // Skip migration if other users are present
+    if (await this._userService.hasCreatedUsers()) {
       return
     }
+
+    const users = await this._auth.listUsers()
 
     try {
       const oldUsers = httpdAuth.conf.users || []
@@ -34,10 +33,8 @@ class AuthLib {
           return // Skip super admin
         }
 
-        const role = oldUser.write ? MIGRATED_USER_ROLES.DEFAULT : MIGRATED_USER_ROLES.READ_ONLY
-
         try {
-          await this._userService.createUser({ email: oldUser.email, role })
+          await this._userService.createUser({ email: oldUser.email, role: MIGRATED_USER_ROLES.READ_ONLY })
         } catch (error) {
           console.error('ERR_MIGRATE_USER', error)
         }
